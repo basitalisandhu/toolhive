@@ -28,6 +28,11 @@ type Client interface {
 	// ListServers retrieves all servers with automatic pagination handling
 	ListServers(ctx context.Context, opts *ListOptions) ([]*v0.ServerJSON, error)
 
+	// ListServersPage retrieves a single page of servers starting at cursor and
+	// returns the cursor of the next page, or an empty string on the last page.
+	// Unlike ListServers it never follows pagination.
+	ListServersPage(ctx context.Context, cursor string, opts *ListOptions) ([]*v0.ServerJSON, string, error)
+
 	// SearchServers searches for servers matching the query string
 	// Always returns the latest version of each server
 	SearchServers(ctx context.Context, query string) ([]*v0.ServerJSON, error)
@@ -154,6 +159,22 @@ func (c *mcpRegistryClient) ListServers(ctx context.Context, opts *ListOptions) 
 	}
 
 	return allServers, nil
+}
+
+// ListServersPage retrieves a single page of servers without following pagination
+func (c *mcpRegistryClient) ListServersPage(
+	ctx context.Context, cursor string, opts *ListOptions,
+) ([]*v0.ServerJSON, string, error) {
+	if opts == nil {
+		opts = &ListOptions{Limit: 100, Version: "latest"}
+	}
+	if opts.Limit == 0 {
+		opts.Limit = 100
+	}
+	if opts.Version == "" {
+		opts.Version = "latest"
+	}
+	return c.fetchServersPage(ctx, cursor, opts)
 }
 
 // fetchServersPage fetches a single page of servers

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -196,4 +197,28 @@ func TestAPIRegistryProvider_PluginsNilClient(t *testing.T) {
 	results, err := p.SearchPlugins("query")
 	require.NoError(t, err)
 	assert.Nil(t, results)
+}
+
+// TestNewAPIRegistryProvider_ValidationProbeFetchesSinglePage guards against the
+// validation probe walking the whole catalog: a registry that always returns a
+// next cursor must still validate with exactly one request.
+func TestNewAPIRegistryProvider_ValidationProbeFetchesSinglePage(t *testing.T) {
+	t.Parallel()
+
+	var requests int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v0.1/servers", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		assert.Equal(t, "1", r.URL.Query().Get("limit"))
+		w.Header().Set("Content-Type", "application/json")
+		// Always advertise another page, like a large registry does.
+		_, _ = w.Write([]byte(`{"servers":[],"metadata":{"next_cursor":"next-page"}}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	provider, err := NewAPIRegistryProvider(srv.URL, true, nil)
+	require.NoError(t, err)
+	require.NotNil(t, provider)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&requests), "validation probe must fetch exactly one page")
 }

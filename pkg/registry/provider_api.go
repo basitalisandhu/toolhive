@@ -63,8 +63,10 @@ func NewAPIRegistryProvider(apiURL string, allowPrivateIp bool, tokenSource auth
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Try to list servers with a small limit to verify API functionality
-		_, err = client.ListServers(ctx, &api.ListOptions{Limit: 1})
+		// Fetch a single page with a small limit to verify API functionality.
+		// ListServers would follow every cursor and walk the whole catalog,
+		// which times out on large registries.
+		_, _, err = client.ListServersPage(ctx, "", &api.ListOptions{Limit: 1})
 		if err != nil {
 			if errors.Is(err, api.ErrRegistryUnauthorized) {
 				return nil, fmt.Errorf(
